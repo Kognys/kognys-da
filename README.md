@@ -16,16 +16,14 @@ The `store-edge` binary is not publicly available. This repository provides:
 
 ## Quick Deploy
 
-### Option 1: Deploy Mock Server (For Testing)
+### Current Setup: Mock Server
 
-1. Rename `Dockerfile.test` to `Dockerfile`
-2. Push to your GitHub repository
-3. Connect to Railway and deploy
+The repository is currently configured with a mock server that simulates the Unibase DA storage node API. This is perfect for testing your Railway deployment.
 
-### Option 2: Deploy Real Storage Node
+### Option: Deploy Real Storage Node (When Available)
 
 1. Obtain the `store-edge` binary from Unibase
-2. Update the `Dockerfile` with one of these methods:
+2. Replace the current `Dockerfile` with `Dockerfile.placeholder` and update it with one of these methods:
    - Add the binary URL to download during build
    - Copy the binary to the repository and uncomment the COPY line
    - Add build instructions if you have access to source code
