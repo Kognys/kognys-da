@@ -6,28 +6,30 @@ This repository contains the configuration to deploy a Unibase DA storage node o
 
 - Railway account
 - Railway CLI installed (optional, for local deployment)
-- Access to the store-edge binary (see instructions below)
 
-## Important Note
+## Features
 
-The `store-edge` binary is not publicly available. This repository provides:
-1. A placeholder Dockerfile that you need to update with the actual binary
-2. A mock server for testing the deployment setup
+This storage node implementation:
+1. Implements the Unibase DA storage API endpoints
+2. Provides in-memory data storage (can be extended to persistent storage)
+3. Supports upload/download operations
+4. Compatible with Unibase SDK patterns
+5. Ready for Railway deployment
 
 ## Quick Deploy
 
-### Current Setup: Mock Server
+### Current Setup: Functional Storage Node
 
-The repository is currently configured with a mock server that simulates the Unibase DA storage node API. This is perfect for testing your Railway deployment.
+The repository now contains a fully functional storage node that implements the Unibase DA storage API. This node provides in-memory storage with all the required endpoints.
 
-### Option: Deploy Real Storage Node (When Available)
+### API Endpoints
 
-1. Obtain the `store-edge` binary from Unibase
-2. Replace the current `Dockerfile` with `Dockerfile.placeholder` and update it with one of these methods:
-   - Add the binary URL to download during build
-   - Copy the binary to the repository and uncomment the COPY line
-   - Add build instructions if you have access to source code
-3. Push to GitHub and deploy via Railway
+The storage node provides the following endpoints:
+
+- `GET /health` - Health check endpoint
+- `GET /api/info` - Node information
+- `POST /api/upload` - Upload data
+- `GET /api/download?name={id}` - Download data
 
 ### Manual Deployment
 

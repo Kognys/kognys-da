@@ -25,3 +25,6 @@ store-edge
 *.dll
 *.so
 *.dylib
+
+# Temporary directories
+temp/

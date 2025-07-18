@@ -1,0 +1,43 @@
+# Build stage
+FROM golang:1.21-alpine AS builder
+
+# Install dependencies
+RUN apk add --no-cache git gcc musl-dev
+
+WORKDIR /build
+
+# Clone the SDK
+RUN git clone https://github.com/unibaseio/unibase-sdk-go.git
+
+# Copy storage node implementation
+COPY storage-node /build/storage-node
+
+WORKDIR /build/storage-node
+
+# Update go.mod to use the cloned SDK
+RUN sed -i 's|../temp/unibase-sdk-go|../unibase-sdk-go|g' go.mod
+
+# Download dependencies and build
+RUN go mod download
+RUN go build -o store-edge .
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
+
+# Create necessary directories
+RUN mkdir -p /root/.store
+
+# Copy the binary
+COPY --from=builder /build/storage-node/store-edge /usr/local/bin/
+
+# Set environment variables
+ENV CHAIN_TYPE=bnb-testnet
+ENV EXPOSE_PORT=8082
+ENV STORAGE_NODE_PASSWORD=storagenode123
+
+EXPOSE 8082
+
+# Initialize and run
+CMD ["sh", "-c", "store-edge init && store-edge daemon run -b 0.0.0.0:${EXPOSE_PORT} -e ${EXPOSE_URL}"]

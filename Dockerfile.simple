@@ -1,0 +1,175 @@
+# Build a simple storage node that uses Unibase SDK patterns
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+# Create a simple storage node based on Unibase patterns
+RUN echo 'package main\n\
+\n\
+import (\n\
+    "encoding/json"\n\
+    "fmt"\n\
+    "log"\n\
+    "net/http"\n\
+    "os"\n\
+    "sync"\n\
+    "time"\n\
+)\n\
+\n\
+type StorageNode struct {\n\
+    sync.RWMutex\n\
+    data map[string][]byte\n\
+    chainType string\n\
+    port string\n\
+}\n\
+\n\
+func (s *StorageNode) healthHandler(w http.ResponseWriter, r *http.Request) {\n\
+    response := map[string]interface{}{\n\
+        "status": "healthy",\n\
+        "type": "storage-node",\n\
+        "chain_type": s.chainType,\n\
+        "port": s.port,\n\
+        "timestamp": time.Now(),\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func (s *StorageNode) infoHandler(w http.ResponseWriter, r *http.Request) {\n\
+    response := map[string]interface{}{\n\
+        "type": "store",\n\
+        "name": "unibase-storage-node",\n\
+        "chainType": s.chainType,\n\
+        "exposeURL": os.Getenv("EXPOSE_URL"),\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func (s *StorageNode) uploadHandler(w http.ResponseWriter, r *http.Request) {\n\
+    if r.Method != http.MethodPost {\n\
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)\n\
+        return\n\
+    }\n\
+    \n\
+    var data map[string]interface{}\n\
+    if err := json.NewDecoder(r.Body).Decode(&data); err != nil {\n\
+        http.Error(w, err.Error(), http.StatusBadRequest)\n\
+        return\n\
+    }\n\
+    \n\
+    id := fmt.Sprintf("%v", data["id"])\n\
+    if id == "<nil>" {\n\
+        id = fmt.Sprintf("file_%d", time.Now().Unix())\n\
+    }\n\
+    \n\
+    jsonData, _ := json.Marshal(data)\n\
+    s.Lock()\n\
+    s.data[id] = jsonData\n\
+    s.Unlock()\n\
+    \n\
+    response := map[string]interface{}{\n\
+        "success": true,\n\
+        "message": "Upload successful",\n\
+        "id": id,\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func (s *StorageNode) downloadHandler(w http.ResponseWriter, r *http.Request) {\n\
+    name := r.URL.Query().Get("name")\n\
+    if name == "" {\n\
+        http.Error(w, "name parameter required", http.StatusBadRequest)\n\
+        return\n\
+    }\n\
+    \n\
+    s.RLock()\n\
+    data, exists := s.data[name]\n\
+    s.RUnlock()\n\
+    \n\
+    if !exists {\n\
+        http.Error(w, "file not found", http.StatusNotFound)\n\
+        return\n\
+    }\n\
+    \n\
+    var jsonData map[string]interface{}\n\
+    json.Unmarshal(data, &jsonData)\n\
+    \n\
+    response := map[string]interface{}{\n\
+        "message": "Download successful",\n\
+        "name": name,\n\
+        "owner": r.URL.Query().Get("owner"),\n\
+        "data": jsonData,\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func enableCORS(next http.HandlerFunc) http.HandlerFunc {\n\
+    return func(w http.ResponseWriter, r *http.Request) {\n\
+        w.Header().Set("Access-Control-Allow-Origin", "*")\n\
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")\n\
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")\n\
+        \n\
+        if r.Method == "OPTIONS" {\n\
+            w.WriteHeader(http.StatusOK)\n\
+            return\n\
+        }\n\
+        \n\
+        next(w, r)\n\
+    }\n\
+}\n\
+\n\
+func main() {\n\
+    port := os.Getenv("EXPOSE_PORT")\n\
+    if port == "" {\n\
+        port = "8082"\n\
+    }\n\
+    \n\
+    chainType := os.Getenv("CHAIN_TYPE")\n\
+    if chainType == "" {\n\
+        chainType = "bnb-testnet"\n\
+    }\n\
+    \n\
+    node := &StorageNode{\n\
+        data: make(map[string][]byte),\n\
+        chainType: chainType,\n\
+        port: port,\n\
+    }\n\
+    \n\
+    http.HandleFunc("/health", enableCORS(node.healthHandler))\n\
+    http.HandleFunc("/api/info", enableCORS(node.infoHandler))\n\
+    http.HandleFunc("/api/upload", enableCORS(node.uploadHandler))\n\
+    http.HandleFunc("/api/download", enableCORS(node.downloadHandler))\n\
+    \n\
+    log.Printf("Unibase Storage Node starting on port %s", port)\n\
+    log.Printf("Chain Type: %s", chainType)\n\
+    log.Printf("External URL: %s", os.Getenv("EXPOSE_URL"))\n\
+    \n\
+    if err := http.ListenAndServe(":"+port, nil); err != nil {\n\
+        log.Fatal(err)\n\
+    }\n\
+}' > main.go
+
+RUN go mod init storage-node
+RUN go build -o store-edge main.go
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
+
+# Create storage directory
+RUN mkdir -p /root/.store
+
+COPY --from=builder /app/store-edge /usr/local/bin/
+
+# Set environment variables
+ENV CHAIN_TYPE=bnb-testnet
+ENV EXPOSE_PORT=8082
+
+EXPOSE 8082
+
+# Direct run (no init needed for this simple version)
+CMD ["/usr/local/bin/store-edge"]
