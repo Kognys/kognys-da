@@ -1,0 +1,15 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+restartPolicyType = "always"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "unibase-storage-node"
+port = 8082
+protocol = "tcp"
+
+[env]
+CHAIN_TYPE = "bnb-testnet"
+EXPOSE_PORT = "8082"

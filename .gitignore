@@ -1,0 +1,27 @@
+# Environment files
+.env
+.env.local
+
+# Storage data
+.store/
+data/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+store-edge
+*.exe
+*.dll
+*.so
+*.dylib

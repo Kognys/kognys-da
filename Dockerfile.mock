@@ -1,0 +1,132 @@
+# Mock storage node for testing Railway deployment
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+# Create a simple mock storage node server
+RUN echo 'package main\n\
+\n\
+import (\n\
+    "encoding/json"\n\
+    "fmt"\n\
+    "log"\n\
+    "net/http"\n\
+    "os"\n\
+    "time"\n\
+)\n\
+\n\
+type HealthResponse struct {\n\
+    Status    string    `json:"status"`\n\
+    ChainType string    `json:"chain_type"`\n\
+    Port      string    `json:"port"`\n\
+    Timestamp time.Time `json:"timestamp"`\n\
+}\n\
+\n\
+type UploadResponse struct {\n\
+    Success bool   `json:"success"`\n\
+    Message string `json:"message"`\n\
+    ID      string `json:"id"`\n\
+}\n\
+\n\
+func healthHandler(w http.ResponseWriter, r *http.Request) {\n\
+    response := HealthResponse{\n\
+        Status:    "healthy",\n\
+        ChainType: os.Getenv("CHAIN_TYPE"),\n\
+        Port:      os.Getenv("EXPOSE_PORT"),\n\
+        Timestamp: time.Now(),\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func uploadHandler(w http.ResponseWriter, r *http.Request) {\n\
+    if r.Method != http.MethodPost {\n\
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)\n\
+        return\n\
+    }\n\
+    \n\
+    var data map[string]interface{}\n\
+    if err := json.NewDecoder(r.Body).Decode(&data); err != nil {\n\
+        http.Error(w, err.Error(), http.StatusBadRequest)\n\
+        return\n\
+    }\n\
+    \n\
+    response := UploadResponse{\n\
+        Success: true,\n\
+        Message: "Mock upload successful",\n\
+        ID:      fmt.Sprintf("%v", data["id"]),\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func downloadHandler(w http.ResponseWriter, r *http.Request) {\n\
+    name := r.URL.Query().Get("name")\n\
+    owner := r.URL.Query().Get("owner")\n\
+    \n\
+    response := map[string]string{\n\
+        "message": "Mock download",\n\
+        "name":    name,\n\
+        "owner":   owner,\n\
+        "data":    "This is mock data from Unibase DA storage node",\n\
+    }\n\
+    w.Header().Set("Content-Type", "application/json")\n\
+    json.NewEncoder(w).Encode(response)\n\
+}\n\
+\n\
+func main() {\n\
+    port := os.Getenv("EXPOSE_PORT")\n\
+    if port == "" {\n\
+        port = "8082"\n\
+    }\n\
+    \n\
+    http.HandleFunc("/health", healthHandler)\n\
+    http.HandleFunc("/api/upload", uploadHandler)\n\
+    http.HandleFunc("/api/download", downloadHandler)\n\
+    \n\
+    log.Printf("Mock Unibase DA Storage Node starting on port %s", port)\n\
+    log.Printf("Chain Type: %s", os.Getenv("CHAIN_TYPE"))\n\
+    log.Printf("This is a MOCK server for testing deployment")\n\
+    \n\
+    if err := http.ListenAndServe(":"+port, nil); err != nil {\n\
+        log.Fatal(err)\n\
+    }\n\
+}' > main.go
+
+RUN go mod init mock-storage-node
+RUN go build -o store-edge main.go
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /app/store-edge /usr/local/bin/
+
+# Create mock init script
+RUN echo '#!/bin/sh\necho "Initializing mock storage node..."' > /usr/local/bin/store-edge-init && \
+    chmod +x /usr/local/bin/store-edge-init
+
+# Create wrapper script
+RUN echo '#!/bin/sh\n\
+if [ "$1" = "init" ]; then\n\
+    /usr/local/bin/store-edge-init\n\
+elif [ "$1" = "daemon" ] && [ "$2" = "run" ]; then\n\
+    exec /usr/local/bin/store-edge\n\
+else\n\
+    echo "Unknown command: $@"\n\
+    exit 1\n\
+fi' > /usr/local/bin/store-edge-wrapper && \
+    chmod +x /usr/local/bin/store-edge-wrapper
+
+# Set environment variables
+ENV CHAIN_TYPE=bnb-testnet
+ENV EXPOSE_PORT=8082
+
+EXPOSE 8082
+
+# Use the wrapper script
+RUN mv /usr/local/bin/store-edge /usr/local/bin/store-edge-real
+RUN mv /usr/local/bin/store-edge-wrapper /usr/local/bin/store-edge
+
+CMD ["sh", "-c", "store-edge init && store-edge daemon run -b 0.0.0.0:${EXPOSE_PORT} -e ${EXPOSE_URL}"]
